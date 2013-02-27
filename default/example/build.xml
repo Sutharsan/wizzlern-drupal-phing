@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+ 
+<project name="example" default="build" description="Build Example">
+  <!-- Load default build.xml -->
+  <import file="/Users/erik/.phing/default/default.build.xml"/>
+
+	<!--
+	Overwrite individual targets. Leave the target empty to stop it from having
+	an effect.
+	-->
+	<target name="build" depends="init">
+	  <echo msg="This is build ${build.id}." />
+	</target>
+
+</project>

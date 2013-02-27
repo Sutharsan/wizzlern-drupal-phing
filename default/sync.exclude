@@ -1,0 +1,9 @@
+**/._*
+**/.DS_Store
+**/.git
+**/*.log
+sites/*/settings*.php
+sites/*/files
+sites/*/private
+CHANGELOG.txt
+install.php

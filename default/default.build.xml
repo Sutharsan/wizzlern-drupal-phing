@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="drupalbuilddefault" default="build" basedir=".">
+  <!--
+    Used sources: 
+      http://www.slideshare.net/jamiefdhurst/whats-the-deal-with-phing
+      http://code.garyjones.co.uk/phing-build-file
+      http://www.lullabot.com/articles/automate-your-life-with-phing
+  -->
+
+  <!--
+    To Do:
+    * Provide mechanisme for a default build.xml files with associated properties files.
+    * Provide better mechanism for hierarchical properties: default + project + user/enviroment.
+      A problem is that ${property} is replaced when the property file is 
+      parsed and not when the property is used. This means that if ${property}
+      is used a early loaded file, it will use the initial value and not the 
+      override value.
+    * Use SSHTask instead of ExecuteTask without the requirement for a passphrase.
+    * Use DrushTask over SSH.
+  -->
+  <!-- ============================================  -->
+  <!-- Target: Private load properties               -->
+  <!-- ============================================  -->
+	<target name="-load-properties">
+		<!--
+     Load default and personal properties. Hard coded property file locations:
+     User home
+      |- .phing
+      |     |- default
+      |     |    |- default.build.xml (this file)
+      |     |    |- build.properties
+      |     |- my.properties 
+		-->
+		<!-- @todo check if my.properties exist -->
+	  <property environment="env" />
+    <!--	  <property name="phing.myhome" value="${env.HOME}/.phing" /> -->
+    <property name="phing.myhome" value="/Users/erik/.phing" />
+  	<property file="${phing.myhome}/default/build.properties" override="true"/>
+  	<property file="${phing.myhome}/my.properties" override="true"/>
+    <property file="${project.basedir}/build.properties" override="true"/>
+
+		<!--
+      Load project specific properties. This is the default 'build.properties' 
+      file but now loaded with override="true".
+		-->
+		<property file="build.properties" override="true"/>
+		
+		<!--
+		  Calculated properties.
+		-->
+		<property name="drush.root.live.current" value="${server.live.path.base}/${server.live.path.current}" />
+    <property name="drush.root.live.future" value="${server.live.path.base}/${server.live.path.future}" />
+    <property name="drupal.path.files.public" value="site/${drupal.domain}/${drupal.files.public}" />
+    <property name="drupal.path.files.private" value="site/${drupal.domain}/${drupal.files.private}" />
+	</target>
+	
+  <!-- 
+    Target: -setup-dirs
+  -->
+	<target name="-setup-dirs" depends="-load-properties" description="Clean up and recreate build directories.">
+<!--
+		<echo message="Deleting build directories" level="debug"/>
+		<delete dir="${project.build.dir}"/>
+		<delete dir="${project.test.dir}"/>
+		<delete dir="${project.log.dir}"/>
+ 
+		<echo message="Creating build directories" level="debug"/>
+		<mkdir dir="${project.build.dir}"/>
+		<mkdir dir="${project.test.dir}"/>
+		<mkdir dir="${project.log.dir}"/>
+-->
+	</target>
+
+  <!-- 
+    Target: init
+  -->
+  <target name="init" depends="-load-properties, -setup-dirs">
+	</target>
+
+  <!-- ============================================  -->
+  <!-- Target: package                               -->
+  <!-- ============================================  -->
+  <target name="-package-zip" depends="init">
+    <echo msg="Packaging ${phing.project.name} (build ${build.id}) ..." />
+    <if>
+      <not>
+        <available file="${directory.build}/${phing.project.name}-${build.id}.zip" />
+      </not>
+      <then>
+        <zip destfile="${directory.build}/${phing.project.name}-${build.id}.zip">
+         <fileset dir=".">
+           <exclude name="**/._*" />
+           <exclude name="**/.DS_Store" />
+           <exclude name="**/.git" />
+           <exclude name="**/*.log" />
+           <exclude name="sites/*/settings*.php" />
+           <exclude name="sites/*/files" />
+           <exclude name="sites/*/private" />
+           <exclude name="${directory.build}/**" />
+           <exclude name="CHANGELOG.txt" />
+           <exclude name="install.php" />
+         </fileset>
+        </zip>
+      </then>
+    </if>
+  </target>
+
+  <!-- ============================================  -->
+  <!-- Target: install                               -->
+  <!-- ============================================  -->
+
+  <target name="install" depends="-install-rsync">
+    <echo msg="Installing new code at server..." />
+  </target>
+
+  <target name="-install-files-prepare" depends="init">
+    <!-- Remove previous build -->
+    <echo msg="ssh ${ssh.live.user}@${ssh.live.host} 'if [ -d ${server.live.path.base}/${server.live.path.previous} ]; then chmod -R u+rw ${server.live.path.base}/${server.live.path.previous}/sites/${drupal.domain}; rm -r `readlink -f ${server.live.path.base}/${server.live.path.previous}`; unlink ${server.live.path.base}/${server.live.path.previous}; fi'" />
+    <exec command="ssh ${ssh.live.user}@${ssh.live.host} 'if [ -d ${server.live.path.base}/${server.live.path.previous} ]; then chmod -R u+rw ${server.live.path.base}/${server.live.path.previous}/sites/${drupal.domain}; rm -r `readlink -f ${server.live.path.base}/${server.live.path.previous}`; unlink ${server.live.path.base}/${server.live.path.previous}; fi'" passthru="true" />
+
+    <!-- Remove future build -->
+    <echo msg="ssh ${ssh.live.user}@${ssh.live.host} 'if [ -d ${server.live.path.base}/${server.live.path.future} ]; then chmod -R u+rw ${server.live.path.base}/${server.live.path.future}/sites/${drupal.domain}; rm -r `readlink -f ${server.live.path.base}/${server.live.path.future}`; unlink ${server.live.path.base}/${server.live.path.future}; fi'" />
+    <exec command="ssh ${ssh.live.user}@${ssh.live.host} 'if [ -d ${server.live.path.base}/${server.live.path.future} ]; then chmod -R u+rw ${server.live.path.base}/${server.live.path.future}/sites/${drupal.domain}; rm -r `readlink -f ${server.live.path.base}/${server.live.path.future}`; unlink ${server.live.path.base}/${server.live.path.future}; fi'" passthru="true" />
+
+    <!-- Copy live site of live to future build -->
+    <echo msg="ssh ${ssh.live.user}@${ssh.live.host} 'cp -r ${server.live.path.base}/${server.live.path.current}/ ${server.live.path.base}/build-${build.id} &amp;&amp; ln -s ${server.live.path.base}/build-${build.id} ${server.live.path.base}/${server.live.path.future}'" />
+    <exec command="ssh ${ssh.live.user}@${ssh.live.host} 'cp -r ${server.live.path.base}/${server.live.path.current}/ ${server.live.path.base}/build-${build.id} &amp;&amp; ln -s ${server.live.path.base}/build-${build.id} ${server.live.path.base}/${server.live.path.future}'" passthru="true" />
+  </target>
+
+  <target name="-install-rsync" depends="-install-files-prepare, -install-db-prepare, init">
+    <taskdef name="sync" classname="phing.tasks.ext.FileSyncTask" />
+    <!-- Copy local build to future build at the server -->
+    <sync
+      sourceDir="${project.build.dir}/"
+      destinationDir="${ssh.live.user}@${ssh.live.host}:${server.live.path.base}/${server.live.path.future}"
+      excludeFile="${sync.exclude.nonDrupal.files}"
+      checksum="true"
+      itemizechanges="true"
+      verbose="true" />
+  </target>
+
+  <target name="-install-db-prepare" depends="init">
+    <!-- Make a database dump of live site -->
+    <exec command="ssh ${ssh.live.user}@${ssh.live.host} '${drush.path.live}/drush sql-dump --result-file=${drush.path.db-dump.live}/${drupal.domain}.sql --yes --uri=${drush.uri} --root=${drush.root.live.current}'" />
+  </target>
+
+  <target name="-install-scp" depends="-install-db-prepare, init">
+    <scp 
+      username="${ssh.live.user}"  
+      host="${ssh.live.host}" 
+      pubkeyfile="${ssh.pubkey}"
+      privkeyfile="${ssh.privkey}"
+      privkeyfilepassphrase="${ssh.passphrase}"
+      file="${directory.build}/${phing.project.name}-${build.id}.zip"
+      todir="${server.live.path.base}"
+      level="debug"
+    />
+  </target>
+
+  <!-- ============================================  -->
+  <!-- Target: deploy                                -->
+  <!-- ============================================  -->
+
+  <target name="deploy" depends="init, install, -deploy-db">
+    <echo msg="Deploying new live site ..." />
+
+    <!-- Change symlinks to put the future-live site live -->
+    <echo msg="ssh ${ssh.live.user}@${ssh.live.host} 'mv ${server.live.path.base}/${server.live.path.current} ${server.live.path.base}/${server.live.path.previous}; mv ${server.live.path.base}/${server.live.path.future} ${server.live.path.base}/${server.live.path.current}'" />
+    <exec command="ssh ${ssh.live.user}@${ssh.live.host} 'mv ${server.live.path.base}/${server.live.path.current} ${server.live.path.base}/${server.live.path.previous}; mv ${server.live.path.base}/${server.live.path.future} ${server.live.path.base}/${server.live.path.current}'" passthru="true" />
+    
+    <!-- Put site online -->
+    <echo msg="ssh ${ssh.live.user}@${ssh.live.host} '${drush.path.live}/drush variable-set maintenance_mode 1 --uri=${drush.uri} --root=${drush.root.live.current}'" />
+    <exec command="ssh ${ssh.live.user}@${ssh.live.host} '${drush.path.live}/drush variable-set maintenance_mode 1 --uri=${drush.uri} --root=${drush.root.live.current}'" passthru="true" />
+  </target>
+
+  <target name="-deploy-db" depends="init">
+    <!-- Put site offline -->
+    <!-- Because both live and future-live use the same database, we have to put the site offline. -->
+    <echo msg="ssh ${ssh.live.user}@${ssh.live.host} '${drush.path.live}/drush variable-set maintenance_mode 0 --uri=${drush.uri} --root=${drush.root.live.future}'" />
+    <exec command="ssh ${ssh.live.user}@${ssh.live.host} '${drush.path.live}/drush variable-set maintenance_mode 0' --uri=${drush.uri} --root=${drush.root.live.future}" passthru="true" />
+
+    <!-- Update database -->
+    <echo msg="ssh ${ssh.live.user}@${ssh.live.host} '${drush.path.live}/drush updatedb --yes --uri=${drush.uri} --root=${drush.root.live.future}; ${drush.path.live}/drush cache-clear all --uri=${drush.uri} --root=${drush.root.live.future}'" />
+    <exec command="ssh ${ssh.live.user}@${ssh.live.host} '${drush.path.live}/drush updatedb --yes --uri=${drush.uri} --root=${drush.root.live.future}; ${drush.path.live}/drush cache-clear all --uri=${drush.uri} --root=${drush.root.live.future}'" passthru="true" />
+
+    <!-- Revert all features -->
+    <echo msg="ssh ${ssh.live.user}@${ssh.live.host} '${drush.path.live}/drush features-revert-all --yes --uri=${drush.uri} --root=${drush.root.live.future}; ${drush.path.live}/drush cache-clear all --uri=${drush.uri} --root=${drush.root.live.future}'" />
+    <exec command="ssh ${ssh.live.user}@${ssh.live.host} '${drush.path.live}/drush features-revert-all --yes --uri=${drush.uri} --root=${drush.root.live.future}; ${drush.path.live}/drush cache-clear all --uri=${drush.uri} --root=${drush.root.live.future}'" passthru="true" />
+  </target>
+
+  <!-- ============================================  -->
+  <!-- Target: build                                 -->
+  <!-- ============================================  -->
+
+  <target name="build" depends="init, deploy" >
+    <echo msg="Build completed." />
+  </target>
+
+</project>

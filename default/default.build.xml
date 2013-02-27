@@ -71,9 +71,9 @@
 -->
 	</target>
 
-  <!-- 
-    Target: init
-  -->
+  <!-- ============================================  -->
+  <!-- Target: init                                  -->
+  <!-- ============================================  -->
   <target name="init" depends="-load-properties, -setup-dirs">
 	</target>
 
